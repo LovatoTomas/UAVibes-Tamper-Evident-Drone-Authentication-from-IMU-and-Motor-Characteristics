@@ -80,11 +80,62 @@ A full run takes roughly 4 hours on a modern laptop. Every figure and table in t
 python run_dashboard.py       # opens http://localhost:8501
 ```
 
-The dashboard provides eight tabs:
-- **New Rig Session** — standard data-collection protocol for a bolted drone
-- **Verifica identità** — enroll from recorded boots and test authentication
-- **Chiave a bordo** — on-device key exchange (real drone or simulation)
-- **Offline Analysis**, **Spectrogram**, **Motor Calibration**, **Resonances** — analysis and visualization of recordings
+The dashboard is the primary interface for data collection, enrollment and authentication testing. All tabs work without a physical drone when the dataset is present under `data/`; a real drone is required only for live recording.
+
+### Tab 1 — New Rig Session (data collection with a real drone)
+
+This tab implements the standard bolted-rig recording protocol. Each session consists of 15 fixed stages recorded independently as separate SD-card logs, so a dropped connection costs only the stage in progress.
+
+**Workflow:**
+1. Connect the drone over USB or CrazyRadio (URI shown at the top of the page).
+2. Select drone identifier (A / B / C / D) and session type (Enrollment / Test / Boot / Board).
+3. Click **Avvia prossima** to run the next pending stage, or **🤖 Registrazione automatica** to run all remaining stages unattended (90 s battery-recovery pause between stages).
+4. When all 15 stages are done, copy the SD card's log files to the PC.
+5. Click **Carica file SD** and select all log files from the card; the dashboard matches them to the correct stages automatically.
+6. Repeat from step 2 for every new session.
+
+The 15 stages are: four single-motor holds (`sweep-m1`–`sweep-m4`), six motor-pair holds, one all-four hold (`sweep-all4`), and four stepped-PWM ladders (`stepped-m1`–`stepped-m4`). PWM is fixed at 58 000; timings are not configurable to keep sessions comparable.
+
+For **boot sessions** (session type Boot) the protocol is instead: 10 s rest (all motors off) followed by each motor alone at 58 000 PWM for 5 s. These are the sessions used for key enrollment and authentication.
+
+### Tab 2 — Verifica identità (PC-side key enrollment and authentication)
+
+This tab enrolls a drone from its recorded boot sessions and tests authentication — no drone needed after recording.
+
+**Enroll a drone:**
+1. Open the tab and select the drone identifier.
+2. Click **Enroll from boot sessions**: the tab reads the first three boot sessions of that drone from `data/fixed_rig_boot/` and computes the helper data.
+3. The enrollment is saved to `data/keystore/` (helper file + station entry).
+
+**Test authentication:**
+1. Select the drone and a boot session to replay.
+2. Click **Avvia verifica**: the tab re-extracts features from the session, runs the fuzzy extractor Rep, and runs the PC-side CPace exchange against the local station.
+3. The result shows accepted / rejected, the number of wrong symbols, and whether the speed alarm fired.
+
+### Tab 3 — Chiave a bordo (on-device key exchange)
+
+This tab drives the FW2 on-device protocol. It works in two modes:
+
+**Simulation (no drone required):**
+1. Select **Drone simulato**.
+2. Pick the drone identifier and a set of recorded boot sessions to feed the simulated drone.
+3. Click **Avvia**: the simulated drone replays the recorded measurements and runs the full CPace exchange with the local station in memory.
+
+**Real drone (FW2 required):**
+1. Connect the drone running FW2.
+2. Click **Enroll** (first time) or **Autentica** (subsequent boots): the drone runs its boot protocol autonomously and exchanges keys with the station over the radio.
+3. The tab shows the result, speed shifts per motor, and any alarm.
+
+### Tabs 4–7 — Analysis and visualization (dataset required)
+
+These tabs operate on the downloaded dataset under `data/`.
+
+| Tab | Purpose |
+|-----|---------|
+| **Offline Analysis** | Load a session, run the pipeline, visualize features and authentication result for any stage |
+| **Spectrogram** | Time-frequency view of a recording; overlay motor-model frequency predictions |
+| **Motor Calibration** | Estimate per-motor speed gains from single-motor stages; compare to the canonical model |
+| **Resonances** | Spectral shape comparison across drones and sessions |
 
 ---
 
