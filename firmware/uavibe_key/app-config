@@ -1,0 +1,11 @@
+# Merged into the default configuration by the out-of-tree build.
+CONFIG_APP_ENABLE=y
+# same priority as the SD-deck logging task, whose 1 kHz sampling all the data come from
+CONFIG_APP_PRIORITY=1
+# 1200 words (4.8 KB): 700 overflowed on the drone with libc qsort (2026-10-18)
+CONFIG_APP_STACKSIZE=1200
+# as FW1: the homemade SD deck has no OneWire memory
+CONFIG_DECK_FORCE="bcUSD"
+# positioning decks never used on the rig: frees the RAM/CCM for the key app
+# CONFIG_DECK_LOCO is not set
+# CONFIG_DECK_LIGHTHOUSE is not set

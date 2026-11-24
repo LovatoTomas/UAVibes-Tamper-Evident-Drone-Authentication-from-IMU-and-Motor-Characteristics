@@ -1,0 +1,25 @@
+diff --git a/src/modules/src/stabilizer.c b/src/modules/src/stabilizer.c
+index 3b265e72..fc66913a 100644
+--- a/src/modules/src/stabilizer.c
++++ b/src/modules/src/stabilizer.c
+@@ -59,6 +59,10 @@
+ 
+ static bool isInit;
+ 
++// UAVibe FW2 (key app, UAVibe/firmware/uavibe_key): called once per
++// stabilizer cycle; this weak default does nothing (FW1 and stock behaviour).
++void __attribute__((weak)) uvStabilizerHook(void) {}
++
+ static uint32_t inToOutLatency;
+ 
+ // State variables for the stabilizer
+@@ -378,6 +382,9 @@ static void stabilizerTask(void* param)
+         usddeckTriggerLogging();
+       }
+ #endif
++      // UAVibe FW2: same point as the synchronous SD logging, so the key app
++      // samples exactly the data the SD logs contain
++      uvStabilizerHook();
+       calcSensorToOutputLatency(&sensorData);
+       stabilizerStep++;
+       STATS_CNT_RATE_EVENT(&stabilizerRate);

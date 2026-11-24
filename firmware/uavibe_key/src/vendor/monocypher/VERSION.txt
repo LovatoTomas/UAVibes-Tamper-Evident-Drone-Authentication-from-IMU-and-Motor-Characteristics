@@ -1,0 +1,7 @@
+Monocypher 4.0.2 (tag 4.0.2, commit 0d85f98c9d9b0227e42cf795cb527dff372b40a4)
+https://github.com/LoupVaillant/Monocypher — dual licence BSD-2-Clause / CC0 (LICENCE.md).
+Files copied unchanged: src/monocypher.c, src/monocypher.h.
+Added 2026-10-29, unchanged, from the 4.0.2 release tarball (monocypher.org/download/monocypher-4.0.2.tar.gz,
+sha256 38d07179738c0c90677dba3ceb7a7b8496bcfea758ba1a53e803fed30ae0879c; its monocypher.c/.h are identical
+to the files above except the version line): src/optional/monocypher-ed25519.c, monocypher-ed25519.h
+(Ed25519 with SHA-512, to check the station signature on START, same as libsodium/PyNaCl).

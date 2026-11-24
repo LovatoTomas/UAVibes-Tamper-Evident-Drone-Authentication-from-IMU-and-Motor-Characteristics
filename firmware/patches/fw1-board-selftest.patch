@@ -1,0 +1,201 @@
+diff --git a/src/drivers/bosch/interface/bmi088.h b/src/drivers/bosch/interface/bmi088.h
+index 8315a00a..785bbb3e 100644
+--- a/src/drivers/bosch/interface/bmi088.h
++++ b/src/drivers/bosch/interface/bmi088.h
+@@ -339,6 +339,10 @@ extern "C"
+      */
+     uint16_t bmi088_perform_accel_selftest(int8_t *result, struct bmi088_dev *dev);
+ 
++    /* UAVibe (2026-10): raw positive / negative readings of the last accel self-test */
++    extern struct bmi088_sensor_data bmi088_accel_selftest_pos;
++    extern struct bmi088_sensor_data bmi088_accel_selftest_neg;
++
+     /*!
+      *  @brief This API enables or disables the Accel Self test feature in the
+      *  sensor.
+diff --git a/src/drivers/bosch/src/bmi088_accel.c b/src/drivers/bosch/src/bmi088_accel.c
+index 48f7e6c2..f1dd1c07 100644
+--- a/src/drivers/bosch/src/bmi088_accel.c
++++ b/src/drivers/bosch/src/bmi088_accel.c
+@@ -805,6 +805,12 @@ uint16_t bmi088_get_sensor_time(struct bmi088_dev *dev, uint32_t *sensor_time)
+     return rslt;
+ }
+ 
++/* UAVibe (2026-10): raw readings of the last accel self-test (24 g range, LSB),
++ * kept so the board's self-test response can be used as a fingerprint
++ * (MEMS-PUF style) instead of only a pass/fail. */
++struct bmi088_sensor_data bmi088_accel_selftest_pos = { 0 };
++struct bmi088_sensor_data bmi088_accel_selftest_neg = { 0 };
++
+ /*!
+  *  @brief This API checks whether the self test functionality of the sensor
+  *  is working or not.
+@@ -842,6 +848,9 @@ uint16_t bmi088_perform_accel_selftest(int8_t *result, struct bmi088_dev *dev)
+                 rslt |= bmi088_get_accel_data(&negative, dev);
+                 rslt |= bmi088_set_accel_selftest(BMI088_ACCEL_SWITCH_OFF_SELF_TEST, dev);
+ 
++                bmi088_accel_selftest_pos = positive;   /* UAVibe */
++                bmi088_accel_selftest_neg = negative;   /* UAVibe */
++
+                 accel_data_diff.x = ABS(positive.x) + ABS(negative.x);
+                 accel_data_diff.y = ABS(positive.y) + ABS(negative.y);
+                 accel_data_diff.z = ABS(positive.z) + ABS(negative.z);
+diff --git a/src/hal/interface/sensors_bmi088_bmp3xx.h b/src/hal/interface/sensors_bmi088_bmp3xx.h
+index ec23ee6d..d3660a4f 100644
+--- a/src/hal/interface/sensors_bmi088_bmp3xx.h
++++ b/src/hal/interface/sensors_bmi088_bmp3xx.h
+@@ -42,4 +42,23 @@ bool sensorsBmi088Bmp3xxReadBaro(baro_t *baro);
+ void sensorsBmi088Bmp3xxSetAccMode(accModes accMode);
+ void sensorsBmi088Bmp3xxDataAvailableCallback(void);
+ 
++/* UAVibe (2026-10): board fingerprint measured at every boot (accelerometer
++ * self-test, gyroscope bias, accelerometer scale). The on-board key app (FW2)
++ * reads it through this function. The same values are also exposed as the
++ * read-only param group "uavibe" for the research tools, unless the firmware is
++ * built with UV_HIDE_BOARD_PARAMS: params can be read by anyone in radio range,
++ * so a drone in service must not expose them. */
++typedef struct {
++  uint8_t stDone;          // self-test attempts used
++  int8_t stResult;         // 0 = valid, -1 = failed, -2 = not run
++  int16_t stPos[3];        // raw self-test readings, positive direction (LSB, 24 g)
++  int16_t stNeg[3];        // raw self-test readings, negative direction
++  float gBias[3];          // gyroscope bias found at boot
++  uint8_t gBiasOk;
++  float accScale;          // accelerometer scale found at boot
++  uint8_t accScaleOk;
++} uvBoardFingerprint_t;
++
++void uvBoardFingerprintGet(uvBoardFingerprint_t *out);
++
+ #endif // __SENSORS_BMI088_BMP3XX_H__
+diff --git a/src/hal/src/sensors_bmi088_bmp3xx.c b/src/hal/src/sensors_bmi088_bmp3xx.c
+index b183285c..5591f037 100644
+--- a/src/hal/src/sensors_bmi088_bmp3xx.c
++++ b/src/hal/src/sensors_bmi088_bmp3xx.c
+@@ -27,6 +27,7 @@
+ #define DEBUG_MODULE "IMU"
+ 
+ #include <math.h>
++#include <stdlib.h>
+ 
+ #include "sensors_bmi088_bmp3xx.h"
+ #include "stm32fxxx.h"
+@@ -136,6 +137,11 @@ static float accScale = 1;
+ static bool accScaleFound = false;
+ static uint32_t accScaleSumCount = 0;
+ 
++// UAVibe (2026-10): board fingerprint measured at every boot (see the
++// "uavibe" param group at the end of this file)
++static int8_t uvAccSelftestResult = -2;   // 0 = pass, -1 = fail, -2 = not run
++static uint8_t uvSelftestDone = 0;
++
+ // Low Pass filtering
+ #define GYRO_LPF_CUTOFF_FREQ  80
+ #define ACCEL_LPF_CUTOFF_FREQ 30
+@@ -433,6 +439,45 @@ static void sensorsDeviceInit(void)
+ #endif
+   }
+ 
++  /* UAVibe (2026-10): accelerometer self-test at every boot. Its raw
++   * positive/negative responses depend on the sensor's own proof mass and
++   * springs (manufacturing variation, MEMS-PUF style) and are exposed as
++   * read-only params, group "uavibe". Runs BEFORE the normal accel set-up
++   * below: the self-test ends with an accel soft reset, after which the
++   * original code re-enables and re-initialises the accelerometer as usual.
++   * Adds ~0.35 s to the boot. */
++  rslt |= bmi088_accel_switch_control(&bmi088Dev, BMI088_ACCEL_POWER_ENABLE);
++  bmi088Dev.delay_ms(5);
++  if (bmi088_accel_init(&bmi088Dev) == BSTDR_OK)
++  {
++    /* Retry: occasionally the readings are not refreshed and the positive and
++     * negative responses come back identical (self-test FAIL) — seen once
++     * in four boots on drone A, 2026-10-07. stDone = number of attempts. */
++    for (int attempt = 0; attempt < 3; attempt++)
++    {
++      bmi088_perform_accel_selftest(&uvAccSelftestResult, &bmi088Dev);
++      uvSelftestDone = attempt + 1;
++      bmi088Dev.delay_ms(5);
++      /* The Bosch PASS check is not enough for a fingerprint (2026-10-07,
++       * drone D): once pos == neg came back as PASS (readings not refreshed),
++       * once the test ran at the 6 g range instead of 24 g (all values /4).
++       * Require pos != neg on every axis and a 24 g-range-sized x response
++       * (|pos.x| + |neg.x| ~ 25-28k LSB on four drones; ~6.5k at 6 g). */
++      bool uvPlausible =
++          bmi088_accel_selftest_pos.x != bmi088_accel_selftest_neg.x &&
++          bmi088_accel_selftest_pos.y != bmi088_accel_selftest_neg.y &&
++          bmi088_accel_selftest_pos.z != bmi088_accel_selftest_neg.z &&
++          (abs(bmi088_accel_selftest_pos.x) + abs(bmi088_accel_selftest_neg.x)) > 15000;
++      if (!uvPlausible)
++        uvAccSelftestResult = -1;
++      if (uvAccSelftestResult == BMI088_SELFTEST_PASS)
++        break;
++      bmi088_accel_switch_control(&bmi088Dev, BMI088_ACCEL_POWER_ENABLE);
++      bmi088Dev.delay_ms(5);
++      bmi088_accel_init(&bmi088Dev);
++    }
++  }
++
+   /* BMI088 ACCEL */
+   rslt |= bmi088_accel_switch_control(&bmi088Dev, BMI088_ACCEL_POWER_ENABLE);
+   bmi088Dev.delay_ms(5);
+@@ -1037,3 +1082,47 @@ PARAM_ADD(PARAM_FLOAT | PARAM_PERSISTENT, imuTheta, &imuTheta)
+ PARAM_ADD(PARAM_FLOAT | PARAM_PERSISTENT, imuPsi, &imuPsi)
+ 
+ PARAM_GROUP_STOP(imu_sensors)
++
++void uvBoardFingerprintGet(uvBoardFingerprint_t *out)
++{
++  out->stDone = uvSelftestDone;
++  out->stResult = uvAccSelftestResult;
++  out->stPos[0] = bmi088_accel_selftest_pos.x;
++  out->stPos[1] = bmi088_accel_selftest_pos.y;
++  out->stPos[2] = bmi088_accel_selftest_pos.z;
++  out->stNeg[0] = bmi088_accel_selftest_neg.x;
++  out->stNeg[1] = bmi088_accel_selftest_neg.y;
++  out->stNeg[2] = bmi088_accel_selftest_neg.z;
++  out->gBias[0] = gyroBias.x;
++  out->gBias[1] = gyroBias.y;
++  out->gBias[2] = gyroBias.z;
++  out->gBiasOk = gyroBiasFound;
++  out->accScale = accScale;
++  out->accScaleOk = accScaleFound;
++}
++
++#ifndef UV_HIDE_BOARD_PARAMS
++/**
++ * UAVibe (2026-10): board fingerprint, measured once at every boot.
++ * Read-only; read by the UAVibe dashboard at the start of a board session.
++ * Not for a drone in service: these values are part of the reading from which
++ * the key is regenerated, and params can be read by anyone in radio range.
++ * Built without them when UV_HIDE_BOARD_PARAMS is defined (FW2: make UV_RESEARCH=0).
++ */
++PARAM_GROUP_START(uavibe)
++PARAM_ADD(PARAM_UINT8 | PARAM_RONLY, stDone, &uvSelftestDone)
++PARAM_ADD(PARAM_INT8 | PARAM_RONLY, stResult, &uvAccSelftestResult)
++PARAM_ADD(PARAM_INT16 | PARAM_RONLY, stPosX, &bmi088_accel_selftest_pos.x)
++PARAM_ADD(PARAM_INT16 | PARAM_RONLY, stPosY, &bmi088_accel_selftest_pos.y)
++PARAM_ADD(PARAM_INT16 | PARAM_RONLY, stPosZ, &bmi088_accel_selftest_pos.z)
++PARAM_ADD(PARAM_INT16 | PARAM_RONLY, stNegX, &bmi088_accel_selftest_neg.x)
++PARAM_ADD(PARAM_INT16 | PARAM_RONLY, stNegY, &bmi088_accel_selftest_neg.y)
++PARAM_ADD(PARAM_INT16 | PARAM_RONLY, stNegZ, &bmi088_accel_selftest_neg.z)
++PARAM_ADD(PARAM_FLOAT | PARAM_RONLY, gBiasX, &gyroBias.x)
++PARAM_ADD(PARAM_FLOAT | PARAM_RONLY, gBiasY, &gyroBias.y)
++PARAM_ADD(PARAM_FLOAT | PARAM_RONLY, gBiasZ, &gyroBias.z)
++PARAM_ADD(PARAM_UINT8 | PARAM_RONLY, gBiasOk, &gyroBiasFound)
++PARAM_ADD(PARAM_FLOAT | PARAM_RONLY, accScale, &accScale)
++PARAM_ADD(PARAM_UINT8 | PARAM_RONLY, accScaleOk, &accScaleFound)
++PARAM_GROUP_STOP(uavibe)
++#endif
+diff --git a/src/utils/src/configblockeeprom.c b/src/utils/src/configblockeeprom.c
+index 93627b95..fd26c759 100644
+--- a/src/utils/src/configblockeeprom.c
++++ b/src/utils/src/configblockeeprom.c
+@@ -176,7 +176,7 @@ int configblockInit(void)
+     return -1;
+   }
+ 
+-  if (cb_ok == false)
++  if (cb_ok == true)
+   {
+     // Copy default data to used structure.
+     memcpy((uint8_t *)&configblock, (uint8_t *)&configblockDefault, sizeof(configblock));

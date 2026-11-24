@@ -1,0 +1,5 @@
+build/
+test/host_test
+# kbuild objects (the out-of-tree build writes them next to the sources)
+*.o
+.*.cmd

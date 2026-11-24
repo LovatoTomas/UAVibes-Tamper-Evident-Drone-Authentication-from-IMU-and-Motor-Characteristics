@@ -1,0 +1,2 @@
+obj-y += monocypher.o
+obj-y += monocypher-ed25519.o

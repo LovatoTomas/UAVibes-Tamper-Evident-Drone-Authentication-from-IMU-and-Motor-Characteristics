@@ -1,0 +1,3 @@
+obj-y += uv_app.o
+obj-y += core/
+obj-y += vendor/monocypher/

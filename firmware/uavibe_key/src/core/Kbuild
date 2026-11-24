@@ -1,0 +1,3 @@
+obj-y += uv_features.o
+obj-y += uv_fe.o
+obj-y += uv_crypto.o

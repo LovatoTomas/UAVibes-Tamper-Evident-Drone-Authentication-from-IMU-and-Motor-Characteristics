@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+env/
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Data (hosted separately — see data/README.md)
+data/fixed_rig/
+data/fixed_rig_test/
+data/fixed_rig_boot/
+data/fixed_rig_board/
+data/fixed_rig_swap/
+data/fixed_rig_props/
+data/fixed_rig_payload/
+data/usd/
+data/old/
+data/m4m1_bug/
+data/analysis_cache/
+data/calibration/
+
+# Keystore (secrets — never commit)
+data/keystore/
+
+# Generated outputs (reproduced by reproduce.py)
+analysis/figures/
+analysis/results_*/
+models/
+cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+desktop.ini
