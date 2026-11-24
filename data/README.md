@@ -2,7 +2,8 @@
 
 The full dataset is hosted separately due to its size (~7 GB).
 
-**Download:** [link to be added after review — Zenodo DOI]
+**Download:** https://zenodo.org/records/24504582  
+**DOI:** 10.5281/zenodo.24504582
 
 ---
 

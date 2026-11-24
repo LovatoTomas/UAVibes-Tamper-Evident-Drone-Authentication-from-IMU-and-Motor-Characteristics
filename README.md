@@ -61,7 +61,7 @@ On **Windows**, `cflib` requires the **WinUSB** driver for the Crazyflie USB dev
 
 ## Reproducing all paper results
 
-Download the dataset (see `data/README.md`) and place it under `data/`. Then run:
+Download the dataset from **https://zenodo.org/records/24504582** and extract each ZIP under `data/` so the layout matches `data/README.md`. Then run:
 
 ```bash
 python reproduce.py           # all steps, reusing cached intermediate results
