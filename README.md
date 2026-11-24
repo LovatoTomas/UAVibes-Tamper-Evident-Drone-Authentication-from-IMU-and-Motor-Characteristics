@@ -173,42 +173,29 @@ make cload              # flash (drone in bootloader mode)
 
 ## Modules
 
-### `pipeline/`
+Each subdirectory has its own README with per-module documentation and code examples.
 
-Signal-processing building blocks, drone-agnostic (only the standard IMU CSV format is assumed):
+| Directory | README | Purpose |
+|-----------|--------|---------|
+| `pipeline/` | [pipeline/README.md](pipeline/README.md) | Signal processing: highpass filter, comb filter, 120-D feature extraction, motor model, ManifoldModel |
+| `enrollment/` | [enrollment/README.md](enrollment/README.md) | Data-collection protocol: 15-stage micro-sweep, session manifest, SD-card timeline |
+| `keyproto/` | [keyproto/README.md](keyproto/README.md) | Fuzzy extractor, CPace key exchange, boot protocol, SPAKE2 |
+| `analysis/` | [analysis/README.md](analysis/README.md) | One script per study; figure generators; helper modules |
+| `firmware/` | [firmware/README.md](firmware/README.md) | How to apply patches, build FW1/FW2, generate station key |
 
-| Module | Purpose |
-|--------|---------|
-| `preprocessing.py` | Butterworth highpass (>5 Hz); adaptive comb filter keyed on PWM→RPM |
-| `features.py` | 120-D feature vector per 1 s window (variance, skewness, kurtosis, spectral shape, 13 LFCC, cross-axis coherence) |
-| `motor_model.py` | Canonical PWM→RPM map (single source of truth); per-motor gain table |
-| `manifold.py` | ManifoldModel: StandardScaler → UMAP → Mahalanobis authentication |
-| `calibration.py` | Spectral cross-validation tool for motor-model calibration |
+---
 
-### `enrollment/`
+## Using UAVibes on a different drone
 
-Data-collection infrastructure for the bolted-rig protocol:
+The pipeline and crypto modules are hardware-agnostic. Only the motor model constants and the data-collection scripts are Crazyflie-specific. To port to another platform:
 
-| Module | Purpose |
-|--------|---------|
-| `micro_sweep.py` | Fixed 15-stage protocol (single motors, pairs, combined, stepped ladders) |
-| `session_manifest.py` | Per-drone/session attempt tracking; matches uploaded SD files to stages |
-| `recorder.py` | Real-time CSV recorder via CRTP telemetry |
-| `usd_timeline.py` | Timeline and phase-recorder shared by all SD-deck paths |
+1. **Produce IMU recordings** in the standard CSV format (`timestamp_s, phase, acc.x, acc.y, acc.z, gyro.x, gyro.y, gyro.z, motor.m1, …`) at ≥ 1 kHz. The `phase` column must label the excitation stages.
 
-### `keyproto/`
+2. **Recalibrate the motor model**: fit `RPM = a × (PWM × vbat) + b` on your hardware with a tachometer or from the dominant spectral line of single-motor recordings. Update `MOTOR_GAIN` and the base coefficients in `pipeline/motor_model.py`.
 
-| Module | Purpose |
-|--------|---------|
-| `fe.py` | Robust fuzzy extractor: shielding-offset quantiser + Reed–Solomon RS[40,36] over GF(65537) |
-| `onboard.py` | Byte-exact Python reference of the firmware C core |
-| `onboard_station.py` | Ground-station side of the on-device protocol |
-| `boot.py` | Extracts features from recorded boot sessions; runs the PC-side key exchange |
-| `spake2.py` | SPAKE2 on edwards25519 (via PyNaCl) with key confirmation |
+3. **Re-run enrollment**: collect at least 3 boot sessions per drone with the same rest + single-motor-hold protocol and enroll via `python -m keyproto.boot` or the dashboard.
 
-### `analysis/`
-
-One script per study; `reproduce.py` runs them all in order. Each script writes its results to a `results_*/` subdirectory and its figures to `analysis/figures/`. See the paper's Evaluation section for the mapping between scripts and figures.
+4. **Adapt the firmware** (optional, for on-device key generation): the portable C core in `firmware/uavibe_key/src/core/` has no dependency on the Crazyflie SDK; only `uv_app.c` contains Crazyflie-specific glue code.
 
 ---
 
