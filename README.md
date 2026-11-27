@@ -59,9 +59,48 @@ On **Windows**, `cflib` requires the **WinUSB** driver for the Crazyflie USB dev
 
 ---
 
+## Quick start — key authentication without a drone
+
+If you only want to try the key enrollment and authentication on the recorded data, you need just one ZIP:
+
+1. Download `fixed_rig_boot.zip` from https://zenodo.org/records/24504582
+2. Extract it into `data/`:
+   ```bash
+   # Linux/macOS
+   cd data && unzip ../fixed_rig_boot.zip
+   ```
+   ```powershell
+   # Windows PowerShell
+   cd data; Expand-Archive ..\fixed_rig_boot.zip -DestinationPath .
+   ```
+3. Launch the dashboard:
+   ```bash
+   python run_dashboard.py    # opens http://localhost:8501
+   ```
+4. Open **Tab 2 — Verifica identità**, select a drone (e.g. A), click **Enroll from boot sessions**, then **Avvia verifica** on any later session.
+
+For the simulated on-device protocol (**Tab 3 — Chiave a bordo**) the same ZIP is sufficient; select **Drone simulato** in that tab.
+
+---
+
 ## Reproducing all paper results
 
-Download the dataset from **https://zenodo.org/records/24504582** and extract each ZIP under `data/` so the layout matches `data/README.md`. Then run:
+Download all eight ZIPs from **https://zenodo.org/records/24504582** and extract each one into `data/`:
+
+```bash
+# Linux/macOS — run from the repo root
+cd data
+for zip in ~/Downloads/fixed_rig*.zip ~/Downloads/calibration.zip; do unzip "$zip"; done
+```
+```powershell
+# Windows PowerShell — run from the repo root
+cd data
+Get-ChildItem "$HOME\Downloads\*.zip" | ForEach-Object { Expand-Archive $_.FullName -DestinationPath . }
+```
+
+The result should be eight directories directly under `data/`: `fixed_rig/`, `fixed_rig_test/`, `fixed_rig_boot/`, `fixed_rig_board/`, `fixed_rig_swap/`, `fixed_rig_props/`, `fixed_rig_payload/`, `calibration/`. See `data/README.md` for the full layout and a table of which ZIPs are needed for each use case.
+
+Then run:
 
 ```bash
 python reproduce.py           # all steps, reusing cached intermediate results
